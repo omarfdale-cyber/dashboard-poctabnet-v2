@@ -85,9 +85,13 @@ with st.spinner("Entraînement du modèle XGBoost..."):
     results.append(["XGBoost", xgb_r2, xgb_rmse, xgb_mae, xgb_time])
 
 # ---- TabNet ----
-with st.spinner("Entraînement du modèle TabNet..."):
+with st.spinner("Entraînement du modèle TabNet... (quelques secondes)"):
     X_train_tabnet, X_test_tabnet = X_train_scaled.copy(), X_test_scaled.copy()
     y_train_tabnet, y_test_tabnet = y_train.copy(), y_test.copy()
+
+    # Correction simple : remplacer les NaN par 0
+    X_train_tabnet = np.nan_to_num(X_train_tabnet)
+    X_test_tabnet = np.nan_to_num(X_test_tabnet)
 
     model_tabnet = TabNetRegressor(seed=42, verbose=0)
     start = time.time()
