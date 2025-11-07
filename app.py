@@ -16,15 +16,20 @@ import time
 # ==========================
 st.set_page_config(page_title="Dashboard POC – Prédiction des ventes Olist", layout="wide")
 st.title("Preuve de Concept – Prédiction du montant total client (Olist)")
-st.write("Ce dashboard présente la comparaison entre RandomForest, XGBoost et TabNet pour la prédiction du montant total client.")
+st.write("Ce dashboard compare RandomForest, XGBoost et TabNet pour la prédiction du montant total client.")
 
 # ==========================
 # 2. Chargement du dataset
 # ==========================
 @st.cache_data
 def load_data():
-    file_path = "clean_dataa.csv"  # Mets ici ton fichier nettoyé (export CSV du notebook)
+    file_path = "clean_dataa.csv"  # ton fichier CSV (export du notebook)
     df = pd.read_csv(file_path)
+
+    # Pour Streamlit Cloud : échantillonner 5000 lignes max
+    if len(df) > 5000:
+        df = df.sample(5000, random_state=42)
+
     return df
 
 df = load_data()
@@ -53,14 +58,12 @@ X_test_scaled = scaler.transform(X_test)
 # 4. Entraînement des modèles
 # ==========================
 st.subheader("Évaluation des modèles")
-
 results = []
 
 # ---- RandomForest ----
 with st.spinner("Entraînement du modèle RandomForest..."):
     start = time.time()
-    rf = RandomForestRegressor(n_estimators=400, max_depth=12, min_samples_split=5,
-                               min_samples_leaf=3, random_state=42)
+    rf = RandomForestRegressor(n_estimators=200, max_depth=10, random_state=42)
     rf.fit(X_train_scaled, y_train)
     y_pred_rf = rf.predict(X_test_scaled)
     rf_time = time.time() - start
@@ -72,8 +75,7 @@ with st.spinner("Entraînement du modèle RandomForest..."):
 # ---- XGBoost ----
 with st.spinner("Entraînement du modèle XGBoost..."):
     start = time.time()
-    xgb = XGBRegressor(n_estimators=800, learning_rate=0.03, max_depth=8,
-                       subsample=0.9, colsample_bytree=0.9, random_state=42)
+    xgb = XGBRegressor(n_estimators=300, learning_rate=0.05, max_depth=6, random_state=42)
     xgb.fit(X_train_scaled, y_train)
     y_pred_xgb = xgb.predict(X_test_scaled)
     xgb_time = time.time() - start
@@ -83,7 +85,7 @@ with st.spinner("Entraînement du modèle XGBoost..."):
     results.append(["XGBoost", xgb_r2, xgb_rmse, xgb_mae, xgb_time])
 
 # ---- TabNet ----
-with st.spinner("Entraînement du modèle TabNet... (peut prendre plusieurs minutes)"):
+with st.spinner("Entraînement du modèle TabNet..."):
     X_train_tabnet, X_test_tabnet = X_train_scaled.copy(), X_test_scaled.copy()
     y_train_tabnet, y_test_tabnet = y_train.copy(), y_test.copy()
 
@@ -93,10 +95,10 @@ with st.spinner("Entraînement du modèle TabNet... (peut prendre plusieurs minu
         X_train_tabnet, y_train_tabnet.values.reshape(-1, 1),
         eval_set=[(X_test_tabnet, y_test_tabnet.values.reshape(-1, 1))],
         eval_metric=['rmse'],
-        patience=20,
-        max_epochs=50,
-        batch_size=256,
-        virtual_batch_size=128
+        patience=10,
+        max_epochs=30,
+        batch_size=128,
+        virtual_batch_size=64
     )
     y_pred_tabnet = model_tabnet.predict(X_test_tabnet).flatten()
     tabnet_time = time.time() - start
@@ -122,23 +124,23 @@ st.pyplot(fig)
 st.subheader("Temps d'entraînement des modèles")
 fig, ax = plt.subplots(figsize=(8, 4))
 sns.barplot(x="Modèle", y="Temps (s)", data=results_df, palette="coolwarm", ax=ax)
-ax.set_title("Durée d'exécution de chaque modèle")
+ax.set_title("Durée d'exécution")
 st.pyplot(fig)
 
 # ==========================
 # 6. Analyse des erreurs TabNet
 # ==========================
 st.subheader("Analyse du modèle TabNet")
-
 residuals = y_test_tabnet - y_pred_tabnet
 
 # Valeurs réelles vs prédites
 fig, ax = plt.subplots(figsize=(6, 6))
 sns.scatterplot(x=y_test_tabnet, y=y_pred_tabnet, alpha=0.5, color='navy', ax=ax)
-ax.plot([y_test_tabnet.min(), y_test_tabnet.max()], [y_test_tabnet.min(), y_test_tabnet.max()], 'r--')
+ax.plot([y_test_tabnet.min(), y_test_tabnet.max()],
+        [y_test_tabnet.min(), y_test_tabnet.max()], 'r--')
 ax.set_xlabel("Valeurs réelles")
 ax.set_ylabel("Valeurs prédites")
-ax.set_title("Comparaison valeurs réelles vs prédites (TabNet)")
+ax.set_title("Valeurs réelles vs prédites (TabNet)")
 st.pyplot(fig)
 
 # Distribution des erreurs
@@ -148,27 +150,15 @@ ax.set_title("Distribution des erreurs (résidus) - TabNet")
 ax.set_xlabel("Erreur (réelle - prédite)")
 st.pyplot(fig)
 
-# Importance des variables
-st.subheader("Importance des variables selon TabNet")
-try:
-    feature_importances = model_tabnet.feature_importances_
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.barplot(x=feature_importances, y=X.columns, palette='viridis', ax=ax)
-    ax.set_title("Importance des variables")
-    st.pyplot(fig)
-except Exception as e:
-    st.write("Impossible d'afficher les importances des variables pour TabNet :", e)
-
 # ==========================
 # 7. Conclusion
 # ==========================
 st.subheader("Conclusion")
 st.write("""
-Les trois modèles offrent d’excellentes performances :
-- RandomForest : modèle de référence, rapide et stable  
-- XGBoost : très performant et efficace  
-- TabNet : plus lent mais plus explicable et pertinent sur les données tabulaires  
+Les trois modèles donnent d'excellents résultats :
+- **RandomForest** : fiable et rapide  
+- **XGBoost** : très bon compromis précision/rapidité  
+- **TabNet** : plus lent mais plus interprétable et robuste sur les données tabulaires  
 
-Cette preuve de concept démontre la faisabilité d’un système prédictif industrialisable.
+Ce POC prouve la faisabilité d’un modèle prédictif industrialisable pour estimer les montants d’achat client.
 """)
-
